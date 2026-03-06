@@ -1,0 +1,274 @@
+{
+  "name": "Code Review - LangGraph Re-Review Loop",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "code-review",
+        "responseMode": "onReceived",
+        "responseData": "={{ JSON.stringify({\"status\": \"started\", \"message\": \"Review running - check n8n Executions for the review form\"}) }}",
+        "options": {
+          "responseContentType": "application/json"
+        }
+      },
+      "id": "b1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Webhook - Code Review",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "code-review"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "check_code_snippet",
+              "leftValue": "={{ $json.body.code_snippet || $json.code_snippet }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0002-0002-0002-000000000002",
+      "name": "IF - Has Code Snippet?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "err", "name": "error", "value": "code_snippet is required", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Validation Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LANGGRAPH_API_URL }}/runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"graph_id\": \"code_review\",\n  \"input\": {\n    \"code_snippet\": \"{{ $json.body.code_snippet || $json.code_snippet }}\",\n    \"language\": \"{{ $json.body.language || $json.language || 'python' }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "b1b2c3d4-0004-0004-0004-000000000004",
+      "name": "POST /runs - Start Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "run_id", "name": "run_id", "value": "={{ $json.run_id }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0005-0005-0005-000000000005",
+      "name": "Extract run_id",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "b1b2c3d4-0006-0006-0006-000000000006",
+      "name": "Wait 5s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1120, 300],
+      "webhookId": "wait-5s-review"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.LANGGRAPH_API_URL }}/runs/{{ $('Extract run_id').item.json.run_id }}/state",
+        "options": {}
+      },
+      "id": "b1b2c3d4-0007-0007-0007-000000000007",
+      "name": "GET /state - Poll State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "check_interrupted",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "interrupted",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0008-0008-0008-000000000008",
+      "name": "IF - Interrupted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "formTitle": "Code Review Decision",
+        "formDescription": "={{ $('GET /state - Poll State').item.json.interrupt_payload.review }}",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Decision",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  { "option": "accept" },
+                  { "option": "reject" },
+                  { "option": "re_review" }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0009-0009-0009-000000000009",
+      "name": "Form - Review Decision",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 3,
+      "position": [1780, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LANGGRAPH_API_URL }}/runs/{{ $('Extract run_id').item.json.run_id }}/resume",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"resume_value\": \"{{ $json['Decision'] }}\" }",
+        "options": {}
+      },
+      "id": "b1b2c3d4-0010-0010-0010-000000000010",
+      "name": "POST /resume - Send Decision",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "check_complete",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "complete",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0011-0011-0011-000000000011",
+      "name": "IF - Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 440]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "done", "name": "done", "value": "=Review complete. Run ID: {{ $('Extract run_id').item.json.run_id }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0012-0012-0012-000000000012",
+      "name": "Done",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1780, 440]
+    }
+  ],
+  "connections": {
+    "Webhook - Code Review": {
+      "main": [[{ "node": "IF - Has Code Snippet?", "type": "main", "index": 0 }]]
+    },
+    "IF - Has Code Snippet?": {
+      "main": [
+        [{ "node": "POST /runs - Start Review", "type": "main", "index": 0 }],
+        [{ "node": "Validation Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "POST /runs - Start Review": {
+      "main": [[{ "node": "Extract run_id", "type": "main", "index": 0 }]]
+    },
+    "Extract run_id": {
+      "main": [[{ "node": "Wait 5s", "type": "main", "index": 0 }]]
+    },
+    "Wait 5s": {
+      "main": [[{ "node": "GET /state - Poll State", "type": "main", "index": 0 }]]
+    },
+    "GET /state - Poll State": {
+      "main": [[{ "node": "IF - Interrupted?", "type": "main", "index": 0 }]]
+    },
+    "IF - Interrupted?": {
+      "main": [
+        [{ "node": "Form - Review Decision", "type": "main", "index": 0 }],
+        [{ "node": "IF - Complete?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Form - Review Decision": {
+      "main": [[{ "node": "POST /resume - Send Decision", "type": "main", "index": 0 }]]
+    },
+    "POST /resume - Send Decision": {
+      "main": [[{ "node": "Wait 5s", "type": "main", "index": 0 }]]
+    },
+    "IF - Complete?": {
+      "main": [
+        [{ "node": "Done", "type": "main", "index": 0 }],
+        [{ "node": "Wait 5s", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "2",
+  "meta": { "templateCredsSetupCompleted": true, "instanceId": "langgraph-demo" },
+  "id": "code-review-workflow-001",
+  "tags": []
+}

@@ -1,0 +1,225 @@
+{
+  "name": "Support Agent - LangGraph Human-in-the-Loop",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "start-support",
+        "responseMode": "onReceived",
+        "responseData": "={{ JSON.stringify({\"status\": \"started\", \"message\": \"Workflow running - check n8n Executions for form prompts\"}) }}",
+        "options": {
+          "responseContentType": "application/json"
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Webhook - Start Support",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "start-support"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LANGGRAPH_API_URL }}/runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"graph_id\": \"support_agent\",\n  \"input\": {\n    \"message\": \"{{ $json.body.message || $json.message || 'I need help' }}\",\n    \"user_name\": \"{{ $json.body.user_name || $json.user_name || 'User' }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "POST /runs - Start Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "run_id", "name": "run_id", "value": "={{ $json.run_id }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Extract run_id",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Wait 5s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 300],
+      "webhookId": "wait-5s-support"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.LANGGRAPH_API_URL }}/runs/{{ $('Extract run_id').item.json.run_id }}/state",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "GET /state - Poll State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "check_interrupted",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "interrupted",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0006-0006-0006-000000000006",
+      "name": "IF - Interrupted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "formTitle": "Support Agent — Human Input Required",
+        "formDescription": "={{ $('GET /state - Poll State').item.json.interrupt_payload.question || $('GET /state - Poll State').item.json.interrupt_payload.summary || 'Please provide your input' }}",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Your Response",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "Type your answer here..."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0007-0007-0007-000000000007",
+      "name": "Form - Human Input",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 3,
+      "position": [1560, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LANGGRAPH_API_URL }}/runs/{{ $('Extract run_id').item.json.run_id }}/resume",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"resume_value\": \"{{ $json['Your Response'] }}\" }",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0008-0008-0008-000000000008",
+      "name": "POST /resume - Send Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "check_complete",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "complete",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0009-0009-0009-000000000009",
+      "name": "IF - Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 440]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "done", "name": "done", "value": "=Workflow complete. Run ID: {{ $('Extract run_id').item.json.run_id }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0010-0010-0010-000000000010",
+      "name": "Done",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1560, 440]
+    }
+  ],
+  "connections": {
+    "Webhook - Start Support": {
+      "main": [[{ "node": "POST /runs - Start Run", "type": "main", "index": 0 }]]
+    },
+    "POST /runs - Start Run": {
+      "main": [[{ "node": "Extract run_id", "type": "main", "index": 0 }]]
+    },
+    "Extract run_id": {
+      "main": [[{ "node": "Wait 5s", "type": "main", "index": 0 }]]
+    },
+    "Wait 5s": {
+      "main": [[{ "node": "GET /state - Poll State", "type": "main", "index": 0 }]]
+    },
+    "GET /state - Poll State": {
+      "main": [[{ "node": "IF - Interrupted?", "type": "main", "index": 0 }]]
+    },
+    "IF - Interrupted?": {
+      "main": [
+        [{ "node": "Form - Human Input", "type": "main", "index": 0 }],
+        [{ "node": "IF - Complete?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Form - Human Input": {
+      "main": [[{ "node": "POST /resume - Send Answer", "type": "main", "index": 0 }]]
+    },
+    "POST /resume - Send Answer": {
+      "main": [[{ "node": "Wait 5s", "type": "main", "index": 0 }]]
+    },
+    "IF - Complete?": {
+      "main": [
+        [{ "node": "Done", "type": "main", "index": 0 }],
+        [{ "node": "Wait 5s", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "2",
+  "meta": { "templateCredsSetupCompleted": true, "instanceId": "langgraph-demo" },
+  "id": "support-agent-workflow-001",
+  "tags": []
+}
