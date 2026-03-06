@@ -67,6 +67,16 @@ APP_FQDN=$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" \
   --query "properties.configuration.ingress.fqdn" -o tsv)
 ok "langgraph-api deployed: https://${APP_FQDN}"
 
+# Inject APP_URL so the running app can embed it in the OpenAPI spec's servers[] block.
+# This enables Foundry tool registration to use the live /openapi.json directly.
+log "Setting APP_URL env var on ${APP_NAME}..."
+az containerapp update \
+  --name           "$APP_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --set-env-vars   "APP_URL=https://${APP_FQDN}" \
+  -o none
+ok "APP_URL=https://${APP_FQDN}"
+
 # ── Deploy redis ──────────────────────────────────────────────────────────────
 log "Deploying ${REDIS_NAME}..."
 

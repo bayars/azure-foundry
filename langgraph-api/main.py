@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -14,6 +15,12 @@ from routers.sessions import router as sessions_router
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
+
+# When deployed to Azure Container Apps, APP_URL is injected as an env var.
+# Setting it here embeds the correct server URL in the generated /openapi.json
+# so Foundry tool registration can use the live spec directly.
+_app_url = os.environ.get("APP_URL", "")
+_servers = [{"url": _app_url}] if _app_url else None
 
 
 @asynccontextmanager
@@ -38,6 +45,7 @@ app = FastAPI(
     description="SSE-streaming LangGraph runs with human-in-the-loop interrupts",
     version="1.0.0",
     lifespan=lifespan,
+    servers=_servers,
 )
 
 app.add_middleware(
@@ -55,3 +63,9 @@ app.include_router(sessions_router, prefix="/sessions", tags=["sessions (AAAS)"]
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "graphs": ["support_agent", "code_review"]}
+
+
+@app.get("/graphs")
+async def list_graphs() -> dict:
+    """Return the available graph IDs. Used by Foundry tool callers to know valid graph_id values."""
+    return {"graphs": ["support_agent", "code_review"]}

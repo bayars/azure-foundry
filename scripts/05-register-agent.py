@@ -30,22 +30,36 @@ import urllib.error
 import urllib.request
 
 # ── Config ────────────────────────────────────────────────────────────────────
-SUBSCRIPTION_ID   = "5ec3a6f9-978c-4e02-9d96-135dbc85269e"
-RESOURCE_GROUP    = "rg-bayarsafa-7080"
-AI_HUB            = "safabayar"
-AI_PROJECT        = "proj-default"
-MODEL_DEPLOYMENT  = "gpt-4o-mini"
-AGENT_NAME        = "langgraph-demo-agent"
-APP_NAME          = "langgraph-api"
-APP_URL           = "https://langgraph-api.ambitiousglacier-23b2e299.eastus2.azurecontainerapps.io"
-API_VERSION       = "2025-05-15-preview"
+import os
+
+SUBSCRIPTION_ID   = os.environ.get("SUBSCRIPTION_ID", "")
+RESOURCE_GROUP    = os.environ.get("RESOURCE_GROUP", "")
+AI_HUB            = os.environ.get("AI_HUB", "")
+AI_PROJECT        = os.environ.get("AI_PROJECT", "")
+MODEL_DEPLOYMENT  = os.environ.get("MODEL_DEPLOYMENT", "gpt-4o-mini")
+AGENT_NAME        = os.environ.get("AGENT_NAME", "langgraph-demo-agent")
+APP_NAME          = os.environ.get("APP_NAME", "langgraph-api")
+APP_URL           = os.environ.get("APP_URL", "")
+API_VERSION       = os.environ.get("FOUNDRY_API_VERSION", "2025-05-15-preview")
 BASE_URL          = f"https://{AI_HUB}.services.ai.azure.com/api/projects/{AI_PROJECT}"
-CA_RESOURCE_ID    = (
+CA_RESOURCE_ID    = os.environ.get(
+    "CA_RESOURCE_ID",
     f"/subscriptions/{SUBSCRIPTION_ID}"
     f"/resourceGroups/{RESOURCE_GROUP}"
-    f"/providers/Microsoft.App/containerapps/{APP_NAME}"
+    f"/providers/Microsoft.App/containerapps/{APP_NAME}",
 )
-OPENAPI_SPEC_PATH = "docs/openapi-foundry.json"
+OPENAPI_SPEC_PATH = os.environ.get("OPENAPI_SPEC_PATH", "docs/openapi-foundry.json")
+
+
+def _require_env():
+    missing = [v for v in ("AI_HUB", "AI_PROJECT", "APP_URL") if not os.environ.get(v)]
+    if missing:
+        print(
+            f"ERROR: Missing required env vars: {', '.join(missing)}\n"
+            "Run:  source scripts/config.sh",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -152,6 +166,7 @@ def prompt_openapi_definition() -> dict:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    _require_env()
     parser = argparse.ArgumentParser()
     parser.add_argument("--kind", choices=["container_app", "prompt"], default="prompt",
                         help="Agent kind to register (default: prompt)")
