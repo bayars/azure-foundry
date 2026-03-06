@@ -1,0 +1,170 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "LangGraph Demo API",
+    "description": "LangGraph runs with human-in-the-loop interrupts. Graphs: support_agent, code_review.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://langgraph-api.ambitiousglacier-23b2e299.eastus2.azurecontainerapps.io"
+    }
+  ],
+  "paths": {
+    "/runs": {
+      "post": {
+        "summary": "Start a graph run",
+        "description": "Start a new LangGraph run. Use graph_id='support_agent' for customer support or 'code_review' for code review. Returns run_id and thread_id immediately.",
+        "operationId": "start_run",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Run started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartRunResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/state": {
+      "get": {
+        "summary": "Get run state",
+        "description": "Get the current status and state of a run. Status can be: running, interrupted, complete, error. When interrupted, check interrupt_payload for what input is needed.",
+        "operationId": "get_run_state",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunStateResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/resume": {
+      "post": {
+        "summary": "Resume an interrupted run",
+        "description": "Resume a paused run. For support_agent escalation approval: resume_value=true or false. For clarification: resume_value='<answer text>'. For code_review decision: resume_value='accept', 'reject', or 're_review'.",
+        "operationId": "resume_run",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Run resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "StartRunRequest": {
+        "type": "object",
+        "required": ["graph_id", "input"],
+        "properties": {
+          "graph_id": {
+            "type": "string",
+            "enum": ["support_agent", "code_review"],
+            "description": "Which graph to run"
+          },
+          "input": {
+            "type": "object",
+            "description": "For support_agent: {user_name, message}. For code_review: {code_snippet, language}"
+          }
+        }
+      },
+      "StartRunResponse": {
+        "type": "object",
+        "properties": {
+          "run_id": { "type": "string" },
+          "thread_id": { "type": "string" },
+          "graph_id": { "type": "string" },
+          "status": { "type": "string" }
+        }
+      },
+      "ResumeRunRequest": {
+        "type": "object",
+        "required": ["resume_value"],
+        "properties": {
+          "resume_value": {
+            "description": "Value to resume with. Boolean for escalation, string for clarification/decision."
+          }
+        }
+      },
+      "RunStateResponse": {
+        "type": "object",
+        "properties": {
+          "run_id": { "type": "string" },
+          "thread_id": { "type": "string" },
+          "graph_id": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["running", "interrupted", "complete", "error"]
+          },
+          "interrupt_payload": {
+            "type": "object",
+            "nullable": true,
+            "description": "Present when status=interrupted. Contains type and prompt for the human."
+          },
+          "state_values": {
+            "type": "object",
+            "nullable": true
+          },
+          "next_nodes": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
