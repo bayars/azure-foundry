@@ -1,0 +1,68 @@
+version: "3.9"
+
+networks:
+  demo-net:
+    driver: bridge
+
+services:
+
+  # ── LangGraph FastAPI service ──────────────────────────────────────────
+  langgraph-api:
+    build:
+      context: ./langgraph-api
+      dockerfile: Dockerfile
+    container_name: langgraph-api
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://10.0.0.224:11434}
+      # Optionally enable LangSmith tracing:
+      # - LANGCHAIN_TRACING_V2=true
+      # - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+      # - LANGCHAIN_PROJECT=langgraph-demo
+    networks:
+      - demo-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── n8n workflow orchestration ─────────────────────────────────────────
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-changeme-32-char-encryption-key}
+      - N8N_JWT_SECRET=${N8N_JWT_SECRET:-changeme-jwt-secret}
+      - LANGGRAPH_API_URL=http://langgraph-api:8000
+      - N8N_SECURE_COOKIE=false
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      # Allow the n8n instance to reach itself for webhook testing
+      - WEBHOOK_URL=http://localhost:5678/
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/home/node/workflows:ro
+    networks:
+      - demo-net
+    depends_on:
+      langgraph-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Redis (future: persistent checkpointer, pub/sub) ──────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - demo-net
+    restart: unless-stopped
+
+volumes:
+  n8n_data:
